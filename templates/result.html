@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="margin-bottom:20px;">
+  <a href="/" class="text-muted" style="font-size:0.85rem;">← Back to Home</a>
+</div>
+
+{% set status = z3.get("status", "PASS") %}
+{% set conflicts = z3.get("conflicts", []) %}
+
+<div style="display:flex; align-items:center; gap:14px; margin-bottom:20px;">
+  <h1 style="font-size:1.4rem; font-weight:800; color:#1a1a2e; margin:0;">Verification Result</h1>
+  {% if status == "PASS" %}
+    <span class="badge badge-pass" style="font-size:0.9rem; padding:5px 14px;">PASS</span>
+  {% else %}
+    <span class="badge badge-fail" style="font-size:0.9rem; padding:5px 14px;">FAIL — {{ conflicts|length }} Contradiction{% if conflicts|length != 1 %}s{% endif %}</span>
+  {% endif %}
+</div>
+
+{% if plain and plain.get("summary") %}
+<div class="card" style="border-left:4px solid {% if status == 'PASS' %}#198754{% else %}#dc3545{% endif %}; padding-left:20px;">
+  <p style="font-size:1rem; color:#212529; line-height:1.6; margin:0;">{{ plain.summary }}</p>
+</div>
+{% endif %}
+
+{% if status == "FAIL" and conflicts %}
+<h2 style="font-size:1.1rem; font-weight:700; color:#dc3545; margin:24px 0 12px;">
+  ⚠ Logical Contradictions Found
+</h2>
+
+{% if plain and plain.get("contradiction_explanations") %}
+  {% for ce in plain.contradiction_explanations %}
+  <div class="conflict-box">
+    <div class="conflict-clauses">
+      {% for c in ce.clauses %}{{ c }}{% if not loop.last %} + {% endif %}{% endfor %}
+    </div>
+    <div class="conflict-explanation">{{ ce.plain_english }}</div>
+  </div>
+  {% endfor %}
+{% else %}
+  {% for conflict in conflicts %}
+  <div class="conflict-box">
+    <div class="conflict-clauses">
+      {% for c in conflict.clauses %}{{ c }}{% if not loop.last %} + {% endif %}{% endfor %}
+    </div>
+    <div class="conflict-explanation">{{ conflict.explanation }}</div>
+  </div>
+  {% endfor %}
+{% endif %}
+{% endif %}
+
+{% if status == "PASS" %}
+<div class="alert alert-success" style="margin:16px 0;">
+  <strong>No logical contradictions detected</strong> in the extracted terms.
+  This means the clauses shown below are internally consistent — they don't
+  mathematically contradict each other.
+</div>
+{% endif %}
+
+{% if plain and plain.get("clause_explanations") and plain.clause_explanations|length > 0 %}
+<div class="card" style="margin-top:24px;">
+  <div class="card-title">Plain-English Clause Summary</div>
+  {% for ce in plain.clause_explanations %}
+  <div class="clause-card">
+    <div class="clause-name">{{ ce.clause }}</div>
+    <div class="clause-text">{{ ce.plain_english }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if schema %}
+<div class="card" style="margin-top:16px;">
+  <div class="card-title" style="margin-bottom:12px;">Terms Analyzed</div>
+  {% set props = schema.get("property", {}) %}
+  {% set clauses = schema.get("clauses", {}) %}
+  <table>
+    <thead><tr><th>Clause</th><th>Term</th><th>Value</th></tr></thead>
+    <tbody>
+      {% if props.get("monthly_rent_usd") %}
+      <tr><td>Lease</td><td>Monthly Rent</td><td>${{ "%.0f"|format(props.monthly_rent_usd) }}</td></tr>
+      {% endif %}
+      {% if props.get("lease_term_days") %}
+      <tr><td>Lease</td><td>Term</td><td>{{ props.lease_term_days }} days</td></tr>
+      {% endif %}
+      {% set lf = clauses.get("late_fee", {}) %}
+      {% if lf.get("fee_pct_of_monthly_rent") is not none %}
+      <tr><td>Late Fee</td><td>Percentage</td><td>{{ lf.fee_pct_of_monthly_rent }}% of monthly rent</td></tr>
+      {% endif %}
+      {% if lf.get("fee_cap_usd") is not none %}
+      <tr><td>Late Fee</td><td>Cap</td><td>${{ "%.0f"|format(lf.fee_cap_usd) }}</td></tr>
+      {% endif %}
+      {% set vn = clauses.get("vacate_notice", {}) %}
+      {% if vn.get("required_notice_days") is not none %}
+      <tr><td>Notice to Vacate</td><td>Required Notice</td><td>{{ vn.required_notice_days }} days</td></tr>
+      {% endif %}
+      {% set sd = clauses.get("security_deposit", {}) %}
+      {% if sd.get("deposit_amount_usd") is not none %}
+      <tr><td>Security Deposit</td><td>Amount</td><td>${{ "%.0f"|format(sd.deposit_amount_usd) }}</td></tr>
+      {% endif %}
+      {% if sd.get("max_deposit_months") is not none %}
+      <tr><td>Security Deposit</td><td>Stated Maximum</td><td>{{ sd.max_deposit_months }}x monthly rent</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div style="margin-top:20px;">
+  <a href="/" class="btn btn-secondary">Analyze Another Lease</a>
+</div>
+
+{% if plain and plain.get("disclaimer") %}
+<div class="disclaimer">{{ plain.disclaimer }}</div>
+{% else %}
+<div class="disclaimer">
+  This analysis checks for logical contradictions in the extracted terms only. It does not check whether
+  terms are legal, fair, or enforceable in your jurisdiction. Consult a tenant rights organization or
+  attorney for legal advice.
+</div>
+{% endif %}
+
+{% endblock %}

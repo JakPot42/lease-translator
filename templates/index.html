@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1 style="font-size:1.6rem; font-weight:800; color:#1a1a2e; margin-bottom:6px;">Plain-English Lease Translator</h1>
+<p class="text-muted" style="margin-bottom:24px;">
+  Paste a lease, and we'll check it for internal logical contradictions using Z3 — a formal
+  verification engine — then explain any problems in plain language.
+  <strong>This is not legal advice.</strong>
+</p>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="grid-2" style="margin-bottom:28px;">
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-title">How it works</div>
+    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; font-size:0.88rem; color:#495057;">
+      <div>
+        <div style="font-weight:700; color:#1a1a2e; margin-bottom:4px;">1. Claude Extracts</div>
+        Lease text → structured schema (notice periods, fees, deposit terms).
+        You confirm before anything else runs.
+      </div>
+      <div>
+        <div style="font-weight:700; color:#1a1a2e; margin-bottom:4px;">2. Z3 Verifies</div>
+        The Z3 SMT solver checks for <em>logical contradictions</em> — clauses that
+        mathematically cannot both be true.
+      </div>
+      <div>
+        <div style="font-weight:700; color:#1a1a2e; margin-bottom:4px;">3. Claude Explains</div>
+        Any contradiction is explained in plain language — what both clauses say,
+        why they conflict, and what it means for you.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card" style="grid-column: 1 / -1;">
+    <div class="card-title">Analyze Your Lease</div>
+    {% if demo_mode %}
+    <div class="alert alert-warning" style="margin-bottom:12px;">
+      DEMO MODE: Claude extraction uses a fixed demo lease schema. The Z3 verification and
+      plain-English explanation still run on whatever is extracted.
+    </div>
+    {% endif %}
+    <form method="post" action="/analyze">
+      <div style="margin-bottom:12px;">
+        <label style="font-size:0.88rem; font-weight:600; color:#495057; display:block; margin-bottom:6px;">
+          Paste your lease agreement:
+        </label>
+        <textarea name="lease_text" class="form-control" rows="10"
+          placeholder="Paste the full text of your lease or rental agreement here..."></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Analyze Lease →</button>
+      <span class="text-muted" style="margin-left:12px; font-size:0.82rem;">
+        We check for: late fee cap conflicts · notice period vs. term length · security deposit cap
+      </span>
+    </form>
+  </div>
+</div>
+
+{% if demo_items %}
+<h2 style="font-size:1.1rem; font-weight:700; color:#1a1a2e; margin:28px 0 12px;">Example Analyses</h2>
+<div class="grid-2">
+  {% for d in demo_items %}
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+      <div class="card-title" style="margin-bottom:0;">Demo {{ d.n }}</div>
+      {% if d.status == "PASS" %}
+        <span class="badge badge-pass">PASS</span>
+      {% elif d.status == "FAIL" %}
+        <span class="badge badge-fail">FAIL — {{ d.conflicts }} conflict{% if d.conflicts != 1 %}s{% endif %}</span>
+      {% endif %}
+    </div>
+    {% if d.address %}
+    <div class="text-muted mb-1">{{ d.address }}</div>
+    {% endif %}
+    {% if d.status == "PASS" %}
+    <div style="font-size:0.85rem; color:#0a3622; margin-bottom:12px;">No contradictions — all clauses are internally consistent.</div>
+    {% elif d.status == "FAIL" %}
+    <div style="font-size:0.85rem; color:#58151c; margin-bottom:12px;">
+      {% if d.n == 2 %}Late fee percentage ($200) exceeds stated cap ($100).{% endif %}
+      {% if d.n == 3 %}Required notice (90 days) exceeds lease term (60 days).{% endif %}
+    </div>
+    {% endif %}
+    <a href="/result/{{ d.id }}" class="btn btn-secondary btn-sm">View Analysis →</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="disclaimer">
+  Lease Translator checks for <em>logical contradictions</em> in stated terms only. It does not check whether
+  lease terms are legal, fair, or enforceable in your jurisdiction. Detected contradictions are not a
+  legal determination — consult a qualified attorney or tenant rights organization for advice.
+</div>
+
+{% endblock %}

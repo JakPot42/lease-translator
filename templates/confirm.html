@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div style="margin-bottom:20px;">
+  <a href="/" class="text-muted" style="font-size:0.85rem;">← Back to Home</a>
+</div>
+
+<h1 style="font-size:1.4rem; font-weight:800; color:#1a1a2e; margin-bottom:6px;">Confirm Extracted Terms</h1>
+<p class="text-muted" style="margin-bottom:24px;">
+  Claude extracted these terms from your lease. Review them carefully, then confirm to run Z3 verification.
+  <strong>Z3 will only check the terms shown below — not your original text.</strong>
+</p>
+
+{% set props = schema.get("property", {}) %}
+{% set clauses = schema.get("clauses", {}) %}
+
+<div class="card">
+  <div class="card-title">Lease Properties</div>
+  <table>
+    <tbody>
+      <tr>
+        <th width="40%">Property Address</th>
+        <td>{{ props.get("address") or "<em class='text-muted'>Not found</em>" }}</td>
+      </tr>
+      <tr>
+        <th>Monthly Rent</th>
+        <td>
+          {% if props.get("monthly_rent_usd") %}
+            ${{ "%.2f"|format(props.monthly_rent_usd) }}
+          {% else %}
+            <em class="text-muted">Not found</em>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Lease Term</th>
+        <td>
+          {% if props.get("lease_term_days") %}
+            {{ props.lease_term_days }} days
+          {% else %}
+            <em class="text-muted">Not found</em>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <th>Start Date</th>
+        <td>{{ props.get("start_date") or "<em class='text-muted'>Not found</em>" }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="card-title">Extracted Clauses</div>
+  {% set lf = clauses.get("late_fee", {}) %}
+  {% set vn = clauses.get("vacate_notice", {}) %}
+  {% set sd = clauses.get("security_deposit", {}) %}
+
+  <table>
+    <thead>
+      <tr>
+        <th width="30%">Clause</th>
+        <th width="35%">Term</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td rowspan="2"><strong>Late Fee</strong></td>
+        <td>Fee (% of monthly rent)</td>
+        <td>
+          {% if lf.get("fee_pct_of_monthly_rent") is not none %}
+            {{ lf.fee_pct_of_monthly_rent }}%
+          {% else %}<em class="text-muted">Not found</em>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>Fee cap (maximum)</td>
+        <td>
+          {% if lf.get("fee_cap_usd") is not none %}
+            ${{ "%.2f"|format(lf.fee_cap_usd) }}
+          {% else %}<em class="text-muted">Not found</em>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td><strong>Notice to Vacate</strong></td>
+        <td>Required notice period</td>
+        <td>
+          {% if vn.get("required_notice_days") is not none %}
+            {{ vn.required_notice_days }} days
+          {% else %}<em class="text-muted">Not found</em>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td rowspan="2"><strong>Security Deposit</strong></td>
+        <td>Deposit amount</td>
+        <td>
+          {% if sd.get("deposit_amount_usd") is not none %}
+            ${{ "%.2f"|format(sd.deposit_amount_usd) }}
+          {% else %}<em class="text-muted">Not found</em>{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td>Stated maximum (months of rent)</td>
+        <td>
+          {% if sd.get("max_deposit_months") is not none %}
+            {{ sd.max_deposit_months }}x monthly rent
+          {% else %}<em class="text-muted">Not found</em>{% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="alert alert-warning" style="margin-bottom:20px;">
+  <strong>Review carefully.</strong> Z3 can only find contradictions in the terms shown above.
+  If something looks wrong, go back and check your lease text.
+  A missed value means that check will be skipped.
+</div>
+
+<div style="display:flex; gap:12px; align-items:center;">
+  <form method="post" action="/confirm/{{ analysis.id }}">
+    <button type="submit" class="btn btn-primary">Confirm and Run Verification →</button>
+  </form>
+  <a href="/" class="btn btn-secondary">Cancel — Start Over</a>
+</div>
+
+{% endblock %}
