@@ -84,7 +84,19 @@ async def analyze(
     lease_text: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    _MAX_LEASE_CHARS = 50_000
     lease_text = lease_text.strip()
+    if len(lease_text) > _MAX_LEASE_CHARS:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "demo_mode": config.DEMO_MODE,
+                "demo_items": [],
+                "title": config.APP_TITLE,
+                "error": f"Lease text too long ({len(lease_text):,} chars). Maximum is {_MAX_LEASE_CHARS:,} characters.",
+            },
+        )
     if len(lease_text) < 50:
         return templates.TemplateResponse(
             request,
