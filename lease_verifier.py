@@ -9,20 +9,34 @@ Three checks:
   1. Late fee cap — percentage-based fee cannot exceed stated cap
   2. Notice vs. term — required notice days cannot exceed total lease term
   3. Security deposit cap — deposit cannot exceed stated maximum (e.g. 2x rent)
+
+Distributed here (Phase 6, Cluster 4, Step 3 -- consistency pass, not a fix)
+from formal-verification-toolkit's shared fv_core.py: the actual Z3 solving
+(assert_and_track / check / unsat_core-to-name resolution) is now done via
+TrackedSolver rather than this file's own copy of that scaffolding. This
+project's own _safe_name() and unsat_core() usage were already correct
+(one of only two of the cluster's three source projects that were, next to
+z3_contract -- guarden_fv's own copy had a hardcoded shortcut, fixed
+standalone in its own repo before fv_core.py existed), so this is a true
+drop-in with no behavior change: same public Conflict/VerificationResult
+shape (Conflict.clauses, not fv_core.Conflict.names, kept unchanged here
+since main.py and templates/result.html already depend on that field name).
+
+The notice-vs-term check below is the exact 3-constraint shape (two
+mutually-dependent constraints plus a third feasibility guard) the Step 0
+regression test in guarden_fv's own repo was constructed to mirror, to
+prove TrackedSolver correctly excludes an unrelated tracked constraint
+from the reported conflict rather than assuming every tracked fact belongs.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Optional
 
-from z3 import Bool, Int, Real, Solver, unsat
+from z3 import Int, Real
 
-
-def _safe_name(clause_name: str) -> str:
-    clean = re.sub(r"[^a-zA-Z0-9_]", "_", clause_name).strip("_")
-    return clean if clean else "clause"
+from fv_core import TrackedSolver
 
 
 @dataclass
@@ -101,20 +115,16 @@ class LeaseVerifier:
         pct_name = f"{clause_name} — percentage sub-clause"
         cap_name = f"{clause_name} — cap sub-clause"
 
-        s = Solver()
+        s = TrackedSolver()
         f = Real("late_fee_amount")
-        pct_bool = Bool(_safe_name(pct_name))
-        cap_bool = Bool(_safe_name(cap_name))
+        s.track(f >= computed_fee, pct_name)
+        s.track(f <= cap_val, cap_name)
 
-        s.assert_and_track(f >= computed_fee, pct_bool)
-        s.assert_and_track(f <= cap_val, cap_bool)
-
-        if s.check() == unsat:
-            name_map = {_safe_name(pct_name): pct_name, _safe_name(cap_name): cap_name}
-            conflicting = [name_map.get(str(item), str(item)) for item in s.unsat_core()]
+        names = s.check_conflict()
+        if names is not None:
             shortfall = computed_fee - cap_val
             return Conflict(
-                clauses=conflicting,
+                clauses=names,
                 explanation=(
                     f'The "{clause_name}" clause sets a fee of {pct}% of monthly rent '
                     f"(${computed_fee:,.0f} on ${float(monthly_rent):,.0f}/month) "
@@ -135,6 +145,12 @@ class LeaseVerifier:
     #   Feasibility   → n <= t   (can't give notice before lease starts)
     #
     # If required_notice_days > lease_term_days, UNSAT.
+    #
+    # This is the 3-constraint shape (two mutually-dependent constraints
+    # plus a third feasibility guard) the guarden_fv unsat_core regression
+    # test was constructed to mirror -- TrackedSolver must report only the
+    # names Z3's real unsat_core() says are necessary, not every tracked
+    # constraint.
     # ------------------------------------------------------------------
 
     def _check_notice_vs_term(self, props: dict, clauses: dict) -> Optional[Conflict]:
@@ -150,25 +166,17 @@ class LeaseVerifier:
         notice_name = vn.get("clause_name", "Notice to Vacate")
         term_name = "Lease Term"
 
-        s = Solver()
+        s = TrackedSolver()
         n = Int("notice_days")
         t = Int("lease_term_days_var")
-        notice_bool = Bool(_safe_name(notice_name))
-        term_bool = Bool(_safe_name(term_name))
-        feasibility_bool = Bool("notice_fits_in_term")
+        s.track(n >= notice_days, notice_name)
+        s.track(t == lease_term_days, term_name)
+        s.track(n <= t, "notice_fits_in_term")
 
-        s.assert_and_track(n >= notice_days, notice_bool)
-        s.assert_and_track(t == lease_term_days, term_bool)
-        s.assert_and_track(n <= t, feasibility_bool)
-
-        if s.check() == unsat:
-            name_map = {
-                _safe_name(notice_name): notice_name,
-                _safe_name(term_name): term_name,
-            }
-            conflicting = [name_map.get(str(item), str(item)) for item in s.unsat_core()]
+        names = s.check_conflict()
+        if names is not None:
             return Conflict(
-                clauses=conflicting,
+                clauses=names,
                 explanation=(
                     f'The "{notice_name}" clause requires {notice_days} days of advance notice '
                     f"before vacating, but the lease term is only {lease_term_days} days. "
@@ -205,20 +213,16 @@ class LeaseVerifier:
         deposit_name = f"{clause_name} — stated amount"
         cap_name = f"{clause_name} — stated maximum"
 
-        s = Solver()
+        s = TrackedSolver()
         d = Real("deposit_amount")
-        dep_bool = Bool(_safe_name(deposit_name))
-        cap_bool = Bool(_safe_name(cap_name))
+        s.track(d >= deposit_val, deposit_name)
+        s.track(d <= cap_val, cap_name)
 
-        s.assert_and_track(d >= deposit_val, dep_bool)
-        s.assert_and_track(d <= cap_val, cap_bool)
-
-        if s.check() == unsat:
-            name_map = {_safe_name(deposit_name): deposit_name, _safe_name(cap_name): cap_name}
-            conflicting = [name_map.get(str(item), str(item)) for item in s.unsat_core()]
+        names = s.check_conflict()
+        if names is not None:
             excess = deposit_val - cap_val
             return Conflict(
-                clauses=conflicting,
+                clauses=names,
                 explanation=(
                     f'The "{clause_name}" clause sets a deposit of ${deposit_val:,.0f} '
                     f"but also states the maximum is {max_months} month(s) of rent "
